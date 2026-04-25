@@ -143,7 +143,13 @@ function startKanji() {
         alert("エラー：かんじの データが ありません");
         return;
     }
-    const pool = shuffle([...data]).slice(0, QUESTIONS_PER_GAME);
+    const pool = shuffle([...data]).slice(0, QUESTIONS_PER_GAME).map(q => {
+        // 選択肢(c)がない場合、他のデータの読み(a)からランダムに生成
+        if (!q.c) {
+            q.c = makeKanjiChoices(q.a, data);
+        }
+        return q;
+    });
     setupGame('kanji', pool);
 }
 
@@ -474,6 +480,16 @@ function generateMul(dan) {
     return { q: `${d} × ${b} ＝ ？`, a: ans, c: makeNumChoices(ans, 1, 81), nums: [d, b] };
 }
 
+function makeKanjiChoices(ans, allData) {
+    const s = new Set([ans]);
+    const uniqueReadings = [...new Set(allData.map(d => d.a))];
+    while (s.size < 4 && s.size < uniqueReadings.length) {
+        const r = uniqueReadings[Math.floor(Math.random() * uniqueReadings.length)];
+        s.add(r);
+    }
+    return shuffle([...s]);
+}
+
 function makeNumChoices(ans, min, max) {
     const s = new Set([ans]);
     while (s.size < 4) {
@@ -507,6 +523,12 @@ async function renderTrace() {
     const found = allKanji.find(d => d.q === k);
     const traceReading = document.getElementById('trace-reading');
     if (traceReading) traceReading.innerText = found ? `よみ: ${found.a}` : '';
+    
+    const guideText = document.getElementById('trace-guide');
+    const svgContainer = document.getElementById('trace-svg-container');
+    if (guideText) guideText.style.opacity = '1';
+    if (svgContainer) svgContainer.style.opacity = '1';
+
     await loadStrokeGuide(k);
     clearCanvas();
     const btnJudge = document.getElementById('btn-trace-judge');
@@ -676,6 +698,13 @@ function initTraceCanvas() {
     canvas.addEventListener('touchstart', (e) => {
         if (traceState.animating) return; e.preventDefault();
         traceState.drawing = true;
+        
+        // 書き始めたらガイドを薄くして記憶を促す
+        const guideText = document.getElementById('trace-guide');
+        const svgContainer = document.getElementById('trace-svg-container');
+        if (guideText) guideText.style.opacity = '0.1';
+        if (svgContainer) svgContainer.style.opacity = '0.2';
+
         const ctx = canvas.getContext('2d'); const p = getPos(e);
         ctx.beginPath(); ctx.moveTo(p.x, p.y);
     }, { passive: false });
@@ -709,4 +738,3 @@ window.addEventListener('DOMContentLoaded', () => {
     const starCount = document.getElementById('star-count');
     if (starCount) starCount.innerText = state.totalCorrect;
 });
-坐
