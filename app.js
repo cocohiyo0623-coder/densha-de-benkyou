@@ -17,7 +17,7 @@ function playTone(freq, type, dur) {
         g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + dur);
         o.connect(g); g.connect(audioCtx.destination);
         o.start(); o.stop(audioCtx.currentTime + dur);
-    } catch(e) { console.log("音声エラー（無視可）:", e); }
+    } catch(e) { console.log("音声エラー:", e); }
 }
 
 function playCorrect() {
@@ -31,13 +31,11 @@ function playWrong() {
     safeTimeout(() => playTone(185, 'sawtooth', 0.3), 50);
 }
 
-// ガタンゴトン音
 function playTrainMove() {
     playTone(150, 'sawtooth', 0.1);
     safeTimeout(() => playTone(120, 'sawtooth', 0.1), 100);
 }
 
-// 踏切の音（カンカン）
 function playCrossing() {
     for(let i=0; i<4; i++) {
         safeTimeout(() => playTone(880, 'sine', 0.15), i * 600);
@@ -47,6 +45,7 @@ function playCrossing() {
 
 // --- セーブデータ ---
 const SAVE_KEY = 'densha_benkyou_v1';
+let state = loadState();
 
 function defaultState() {
     return {
@@ -60,7 +59,7 @@ function loadState() {
     try {
         const raw = localStorage.getItem(SAVE_KEY);
         if (raw) return { ...defaultState(), ...JSON.parse(raw) };
-    } catch(e) { console.log("セーブデータ読込エラー:", e); }
+    } catch(e) { console.log("セーブ読込失敗:", e); }
     return defaultState();
 }
 
@@ -68,8 +67,6 @@ function saveState() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); }
     catch(e) { console.log("セーブ失敗:", e); }
 }
-
-let state = loadState();
 
 // --- 電車の絵文字取得 ---
 function getTrainEmoji() {
@@ -83,7 +80,7 @@ function getTrainEmoji() {
 
 // --- ゲームステート ---
 let game = { mode: '', questions: [], idx: 0, sessionCorrect: 0, isAnswering: false, subStep: 0, grade: 1 };
-let activeTimeouts = []; // 実行中のタイマーを管理するリスト
+let activeTimeouts = [];
 
 function safeTimeout(fn, delay) {
     const id = setTimeout(() => {
@@ -104,8 +101,12 @@ function showScreen(id) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     const el = document.getElementById('screen-' + id);
     if (el) el.classList.add('active');
-    document.getElementById('global-header').style.display = (id === 'home') ? 'none' : 'flex';
-    document.getElementById('star-count').innerText = state.totalCorrect;
+    
+    const header = document.getElementById('global-header');
+    if (header) header.style.display = (id === 'home') ? 'none' : 'flex';
+    
+    const starCount = document.getElementById('star-count');
+    if (starCount) starCount.innerText = state.totalCorrect;
     
     if (id === 'home') {
         const hero = document.querySelector('.home-hero');
@@ -117,23 +118,14 @@ function showScreen(id) {
     }
 }
 
-function goHome() { 
-    clearAllTimeouts(); 
-    showScreen('home'); 
-}
+function goHome() { clearAllTimeouts(); showScreen('home'); }
 function showMathSelect() { 
     clearAllTimeouts();
-    // 1年生なら「かけざん」ボタンを隠す
     const danBtn = document.querySelector('button[onclick="showDanSelect()"]');
-    if (danBtn) {
-        danBtn.style.display = (game.grade === 1) ? 'none' : 'flex';
-    }
+    if (danBtn) danBtn.style.display = (game.grade === 1) ? 'none' : 'flex';
     showScreen('math-select'); 
 }
-function showDanSelect() { 
-    clearAllTimeouts();
-    showScreen('dan-select'); 
-}
+function showDanSelect() { clearAllTimeouts(); showScreen('dan-select'); }
 
 // --- 学年切替 ---
 function setGrade(g) {
@@ -145,7 +137,12 @@ function setGrade(g) {
 
 // --- 漢字クイズ開始 ---
 function startKanji() {
+    console.log("startKanji called. Grade:", game.grade);
     const data = game.grade === 1 ? KANJI_G1 : KANJI_G2;
+    if (!data || data.length === 0) {
+        alert("エラー：かんじの データが ありません");
+        return;
+    }
     const pool = shuffle([...data]).slice(0, QUESTIONS_PER_GAME);
     setupGame('kanji', pool);
 }
@@ -154,7 +151,7 @@ function startKanji() {
 function startMath(mode, option) {
     let pool = [];
     if (mode === 'word') {
-        pool = shuffle([...WORD_PROBLEMS]).slice(0, Math.min(WORD_PROBLEMS.length, QUESTIONS_PER_GAME));
+        pool = shuffle([...WORD_PROBLEMS]).slice(0, QUESTIONS_PER_GAME);
     } else {
         for (let i = 0; i < QUESTIONS_PER_GAME; i++) {
             if (mode === 'addsub') pool.push(game.grade === 2 ? generateAddSubG2() : generateAddSub());
@@ -166,15 +163,19 @@ function startMath(mode, option) {
 
 // --- ゲーム初期化 ---
 function setupGame(mode, questions) {
-    clearAllTimeouts(); // 新しいゲームを始める前に前のタイマーを消す
+    clearAllTimeouts();
     game = { ...game, mode, questions, idx: 0, sessionCorrect: 0, isAnswering: false, subStep: 0 };
+    
     const m = document.getElementById('station-markers');
-    m.innerHTML = '';
-    for (let i = 0; i < questions.length; i++) {
-        const n = document.createElement('div');
-        n.className = 'station-node';
-        m.appendChild(n);
+    if (m) {
+        m.innerHTML = '';
+        for (let i = 0; i < questions.length; i++) {
+            const n = document.createElement('div');
+            n.className = 'station-node';
+            m.appendChild(n);
+        }
     }
+    
     renderQuestion();
     showScreen('game');
 }
@@ -182,21 +183,30 @@ function setupGame(mode, questions) {
 // --- 問題表示 ---
 function renderQuestion() {
     const q = game.questions[game.idx];
+    if (!q) {
+        console.error("No question at index", game.idx);
+        goHome();
+        return;
+    }
+
     const display = document.getElementById('question-display');
     const text = document.getElementById('question-text');
     const stepLabel = document.getElementById('step-label');
     const hintBubble = document.getElementById('hint-bubble');
     const hintBtn = document.getElementById('hint-btn');
 
-    display.innerHTML = '';
-    stepLabel.innerText = '';
-    hintBubble.classList.remove('show');
-    hintBtn.style.display = 'none';
+    if (display) {
+        display.innerHTML = '';
+        display.style.fontSize = '';
+    }
+    if (text) text.innerText = '';
+    if (stepLabel) stepLabel.innerText = '';
+    if (hintBubble) hintBubble.classList.remove('show');
+    if (hintBtn) hintBtn.style.display = 'none';
 
     if (game.mode === 'word') {
-        // 文章問題
-        text.innerText = game.subStep === 0 ? "しきは どれ？" : "こたえは どれ？";
-        stepLabel.innerText = game.subStep === 0 ? "1/2" : "2/2";
+        if (text) text.innerText = game.subStep === 0 ? "しきは どれ？" : "こたえは どれ？";
+        if (stepLabel) stepLabel.innerText = game.subStep === 0 ? "1/2" : "2/2";
         const div = document.createElement('div');
         div.className = 'word-problem-text';
         q.text.forEach((line, i) => {
@@ -205,35 +215,36 @@ function renderQuestion() {
             l.innerHTML = `<span>${q.emojis[i]}</span><span>${line}</span>`;
             div.appendChild(l);
         });
-        display.appendChild(div);
-        display.style.fontSize = '';
+        if (display) display.appendChild(div);
     } else if (game.mode === 'kanji') {
-        // 漢字クイズ（ヒントボタン表示）
-        text.innerText = "この かんじ なんて よむ？";
-        display.innerText = q.q;
-        display.style.fontSize = '72px';
-        if (q.hint) hintBtn.style.display = 'block';
+        if (text) text.innerText = "この かんじ なんて よむ？";
+        if (display) {
+            display.innerText = q.q;
+            display.style.fontSize = '72px';
+        }
+        if (q.hint && hintBtn) hintBtn.style.display = 'block';
     } else {
-        // 算数クイズ
-        text.innerText = "こたえは どれ？";
-        display.innerText = q.q;
-        display.style.fontSize = '48px';
-        hintBtn.style.display = 'block'; // 算数は常にヒント（そろばん）を出せるようにする
+        if (text) text.innerText = "こたえは どれ？";
+        if (display) {
+            display.innerText = q.q;
+            display.style.fontSize = '48px';
+        }
+        if (hintBtn) hintBtn.style.display = 'block';
     }
 
-    // 選択肢を描画
     const choices = (game.mode === 'word') ? (game.subStep === 0 ? q.fc : q.ac) : q.c;
     const grid = document.getElementById('choice-grid');
-    grid.innerHTML = '';
-    shuffle([...choices]).forEach(c => {
-        const btn = document.createElement('button');
-        btn.className = 'choice-btn';
-        btn.innerText = c;
-        btn.onclick = () => checkAnswer(c);
-        grid.appendChild(btn);
-    });
+    if (grid) {
+        grid.innerHTML = '';
+        shuffle([...choices]).forEach(c => {
+            const btn = document.createElement('button');
+            btn.className = 'choice-btn';
+            btn.innerText = c;
+            btn.onclick = () => checkAnswer(c);
+            grid.appendChild(btn);
+        });
+    }
 
-    // 電車の位置と絵文字を更新
     const train = document.getElementById('game-train');
     if (train) {
         train.innerText = getTrainEmoji();
@@ -242,7 +253,6 @@ function renderQuestion() {
         train.style.left = (20 + (trackW / Math.max(total - 1, 1)) * game.idx) + 'px';
     }
 
-    // 駅マーカー更新
     document.querySelectorAll('.station-node').forEach((n, i) => {
         n.classList.toggle('passed', i < game.idx);
         n.classList.toggle('current', i === game.idx);
@@ -255,31 +265,27 @@ function renderQuestion() {
 function showHint() {
     const q = game.questions[game.idx];
     const bubble = document.getElementById('hint-bubble');
+    if (!bubble) return;
     
     if (game.mode === 'kanji') {
         if (!q.hint) return;
         bubble.innerHTML = `<span class="hint-emoji">${q.hint}</span><span>${q.hintText}</span>`;
     } else {
-        // 算数モードならそろばんを表示
         bubble.innerHTML = `<div style="margin-bottom:5px;">そろばん ヒント</div>`;
         const container = document.createElement('div');
         container.className = 'soroban-container';
-        
         if (q.nums) {
             q.nums.forEach((n, i) => {
                 container.appendChild(renderSorobanRow(n, i === 0 ? 'red' : 'blue'));
             });
         }
         bubble.appendChild(container);
-
-        // 玉を動かすアニメーション（少し遅らせて実行）
         safeTimeout(() => {
             bubble.querySelectorAll('.bead-group').forEach(g => {
                 g.style.transform = 'translateX(0)';
             });
         }, 50);
     }
-    
     bubble.classList.toggle('show');
 }
 
@@ -288,18 +294,13 @@ function renderSorobanRow(num, color) {
     row.className = 'soroban-row';
     const group = document.createElement('div');
     group.className = 'bead-group';
-    group.style.transform = 'translateX(-200px)'; // 最初は左に隠しておく
-    
+    group.style.transform = 'translateX(-200px)';
     for (let i = 0; i < 10; i++) {
         const bead = document.createElement('div');
         bead.className = 'bead';
         if (color === 'blue') bead.classList.add('blue');
-        // 5個ごとに色を変える（視認性アップ）
         if (i >= 5) bead.style.filter = 'brightness(1.2)';
-        
-        // 指定された数だけ「濃い」状態で表示し、残りは透明度を下げる
         if (i >= num) bead.style.opacity = '0.1';
-        
         group.appendChild(bead);
     }
     row.appendChild(group);
@@ -312,15 +313,9 @@ function checkAnswer(selected) {
     game.isAnswering = false;
 
     const q = game.questions[game.idx];
-    let correctVal;
-    if (game.mode === 'word') {
-        correctVal = game.subStep === 0 ? q.f : q.a;
-    } else {
-        correctVal = q.a;
-    }
+    let correctVal = (game.mode === 'word') ? (game.subStep === 0 ? q.f : q.a) : q.a;
     const isCorrect = (String(selected) === String(correctVal));
 
-    // ボタンの色を変える
     document.querySelectorAll('.choice-btn').forEach(b => {
         if (String(b.innerText) === String(correctVal)) b.classList.add('correct');
         else if (String(b.innerText) === String(selected) && !isCorrect) b.classList.add('wrong');
@@ -330,15 +325,12 @@ function checkAnswer(selected) {
         playCorrect();
         playTrainMove();
         if (game.mode === 'word' && game.subStep === 0) {
-            // 文章問題: 式が正解 → 答えステップへ
             safeTimeout(() => { game.subStep = 1; renderQuestion(); }, 1000);
         } else {
             showPraise();
             game.sessionCorrect++;
             state.totalCorrect++;
             state.totalLevel = Math.floor(state.totalCorrect / LEVEL_UNIT) + 1;
-            // 苦手リストから減らす
-            decreaseWeak(q);
             saveState();
             safeTimeout(() => {
                 game.idx++;
@@ -349,43 +341,14 @@ function checkAnswer(selected) {
         }
     } else {
         playWrong();
-        // 苦手リストに追加
-        increaseWeak(q);
-        // 同セッション内で2問後に再出題
         if (!(game.mode === 'word' && game.subStep === 0)) {
             game.questions.splice(game.idx + 2, 0, { ...q });
         }
-        saveState();
         safeTimeout(() => {
             if (game.mode === 'word' && game.subStep === 0) { game.subStep = 1; renderQuestion(); }
             else renderQuestion();
         }, WRONG_DELAY);
     }
-}
-
-// --- 苦手管理 ---
-function getWeakKey(q) {
-    if (game.mode === 'kanji') return q.q;
-    if (game.mode === 'word') return q.id;
-    return q.q;
-}
-
-function increaseWeak(q) {
-    const key = getWeakKey(q);
-    if (game.mode === 'kanji') state.weakKanji[key] = (state.weakKanji[key] || 0) + 1;
-    else if (game.mode === 'addsub') state.weakAddSub[key] = (state.weakAddSub[key] || 0) + 1;
-    else if (game.mode === 'mul') state.weakMul[key] = (state.weakMul[key] || 0) + 1;
-    else if (game.mode === 'word') state.weakReading[key] = (state.weakReading[key] || 0) + 1;
-}
-
-function decreaseWeak(q) {
-    const key = getWeakKey(q);
-    let map;
-    if (game.mode === 'kanji') map = state.weakKanji;
-    else if (game.mode === 'addsub') map = state.weakAddSub;
-    else if (game.mode === 'mul') map = state.weakMul;
-    else if (game.mode === 'word') map = state.weakReading;
-    if (map && map[key]) { map[key]--; if (map[key] <= 0) delete map[key]; }
 }
 
 // --- 演出 ---
@@ -394,6 +357,8 @@ function showPraise() {
     const overlay = document.getElementById('praise-overlay');
     const emoji = document.getElementById('praise-emoji');
     const text = document.getElementById('praise-text');
+    if (!overlay || !emoji || !text) return;
+
     emoji.innerText = p.e;
     text.innerText = p.t;
     overlay.style.opacity = "1";
@@ -426,56 +391,59 @@ function createFirework() {
 // --- クリア画面 ---
 function showClearScreen() {
     playCrossing();
-    // スタンプを追加
     const today = new Date().toISOString().split('T')[0];
     if (state.todayDate !== today) { state.todayStamps = 0; state.todayDate = today; }
     state.todayStamps++;
     if (!state.stamps.includes(today)) state.stamps.push(today);
-    // メダルチェック
     MEDAL_DEFS.forEach(m => { if (!state.medals.includes(m.id) && m.check(state)) state.medals.push(m.id); });
     saveState();
 
     const medal = state.totalLevel >= 10 ? '👑' : state.totalLevel >= 5 ? '🥇' : state.totalLevel >= 3 ? '🥈' : '🥉';
-    document.getElementById('clear-medal').innerText = medal;
-    document.getElementById('clear-correct').innerText = game.sessionCorrect;
-    document.getElementById('clear-total').innerText = game.questions.length;
-    document.getElementById('clear-level').innerText = state.totalLevel;
+    const medalEl = document.getElementById('clear-medal');
+    if (medalEl) medalEl.innerText = medal;
+    const correctEl = document.getElementById('clear-correct');
+    if (correctEl) correctEl.innerText = game.sessionCorrect;
+    const totalEl = document.getElementById('clear-total');
+    if (totalEl) totalEl.innerText = game.questions.length;
+    const levelEl = document.getElementById('clear-level');
+    if (levelEl) levelEl.innerText = state.totalLevel;
     showScreen('clear');
 }
 
 // --- ごほうび画面 ---
 function showRecord() {
-    // 今日のスタンプ
     const grid = document.getElementById('stamp-grid');
-    grid.innerHTML = '';
-    for (let i = 0; i < 10; i++) {
-        const cell = document.createElement('div');
-        cell.className = 'stamp-cell' + (i < state.todayStamps ? ' earned' : '');
-        cell.innerText = i < state.todayStamps ? '🎫' : '';
-        grid.appendChild(cell);
+    if (grid) {
+        grid.innerHTML = '';
+        for (let i = 0; i < 10; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'stamp-cell' + (i < state.todayStamps ? ' earned' : '');
+            cell.innerText = i < state.todayStamps ? '🎫' : '';
+            grid.appendChild(cell);
+        }
     }
-
-    // メダル一覧
     const list = document.getElementById('medal-list');
-    list.innerHTML = '';
-    MEDAL_DEFS.forEach(m => {
-        const item = document.createElement('div');
-        const earned = state.medals.includes(m.id);
-        item.className = 'medal-item' + (earned ? '' : ' locked');
-        item.innerHTML = `<span class="medal-emoji">${earned ? m.emoji : '🔒'}</span><span class="medal-label">${m.label}</span>`;
-        list.appendChild(item);
-    });
-
-    // 統計
-    document.getElementById('stat-correct').innerText = state.totalCorrect;
-    document.getElementById('stat-level').innerText = state.totalLevel;
-    document.getElementById('stat-days').innerText = state.stamps.length;
-
+    if (list) {
+        list.innerHTML = '';
+        MEDAL_DEFS.forEach(m => {
+            const item = document.createElement('div');
+            const earned = state.medals.includes(m.id);
+            item.className = 'medal-item' + (earned ? '' : ' locked');
+            item.innerHTML = `<span class="medal-emoji">${earned ? m.emoji : '🔒'}</span><span class="medal-label">${m.label}</span>`;
+            list.appendChild(item);
+        });
+    }
+    const sCorrect = document.getElementById('stat-correct');
+    if (sCorrect) sCorrect.innerText = state.totalCorrect;
+    const sLevel = document.getElementById('stat-level');
+    if (sLevel) sLevel.innerText = state.totalLevel;
+    const sDays = document.getElementById('stat-days');
+    if (sDays) sDays.innerText = state.stamps.length;
     showScreen('record');
 }
 
 function resetData() {
-    if (confirm('ほんとうに きろくを ぜんぶ けしますか？\n（もどせません）')) {
+    if (confirm('ほんとうに きろくを ぜんぶ けしますか？')) {
         state = defaultState();
         saveState();
         goHome();
@@ -491,7 +459,6 @@ function generateAddSub() {
     return { q: `${a} ${isAdd ? '＋' : '－'} ${b} ＝ ？`, a: ans, c: makeNumChoices(ans, 0, 10), nums: [a, b] };
 }
 
-// 2年生用: くりあがり・くりさがり（20まで）
 function generateAddSubG2() {
     const isAdd = Math.random() > 0.5;
     let a, b, ans;
@@ -509,21 +476,17 @@ function generateMul(dan) {
 
 function makeNumChoices(ans, min, max) {
     const s = new Set([ans]);
-    let attempts = 0;
-    while (s.size < 4 && attempts < 100) {
-        attempts++;
-        const d = Math.floor(Math.random() * 11) - 5; // より広い範囲で探す
+    while (s.size < 4) {
+        const d = Math.floor(Math.random() * 11) - 5;
         const v = ans + (d === 0 ? 3 : d);
         if (v >= min && v <= max) s.add(v);
     }
-    // もし4つ集まらなくても、とりあえずある分だけで進める
     return [...s];
 }
 
-// --- なぞりがき（KanjiVG 書き順アニメーション対応）---
+// --- なぞりがき ---
 let traceState = { kanji: [], idx: 0, drawing: false, svgCache: {}, animating: false };
 
-// KanjiVG の SVG を取得する URL（オープンソースの書き順データ）
 function kanjiVgUrl(char) {
     const hex = char.charCodeAt(0).toString(16).padStart(5, '0');
     return `https://raw.githubusercontent.com/KanjiVG/kanjivg/master/kanji/${hex}.svg`;
@@ -532,7 +495,7 @@ function kanjiVgUrl(char) {
 function showTrace() {
     traceState.kanji = game.grade === 1 ? [...TRACE_KANJI_G1] : [...TRACE_KANJI_G2];
     traceState.idx = 0;
-    showScreen('trace'); // 先に画面を表示してサイズを確定させる
+    showScreen('trace');
     renderTrace();
 }
 
@@ -540,228 +503,117 @@ async function renderTrace() {
     const k = traceState.kanji[traceState.idx];
     const traceCounter = document.getElementById('trace-counter');
     if (traceCounter) traceCounter.innerText = `${traceState.idx + 1} / ${traceState.kanji.length}`;
-
-    // 読みを検索して表示
     const allKanji = [...KANJI_G1, ...KANJI_G2];
     const found = allKanji.find(d => d.q === k);
     const traceReading = document.getElementById('trace-reading');
     if (traceReading) traceReading.innerText = found ? `よみ: ${found.a}` : '';
-
-    // SVGガイドを読み込む
     await loadStrokeGuide(k);
     clearCanvas();
-    
-    // ボタンの状態をリセット
     const btnJudge = document.getElementById('btn-trace-judge');
     const btnNext = document.getElementById('btn-trace-next');
     const hanamaru = document.getElementById('hanamaru-overlay');
     if (btnJudge) btnJudge.style.display = 'flex';
     if (btnNext) btnNext.style.display = 'none';
     if (hanamaru) hanamaru.classList.remove('hanamaru-anime');
-    const statusEl = document.getElementById('trace-status');
-    if (statusEl) statusEl.innerText = '';
 }
 
-// KanjiVG から SVG を取得してガイド表示する
 async function loadStrokeGuide(kanji) {
     const container = document.getElementById('trace-svg-container');
     const guideText = document.getElementById('trace-guide');
     const statusEl = document.getElementById('trace-status');
-
     if (container) container.innerHTML = '';
-    if (guideText) {
-        guideText.innerText = kanji; // フォールバック表示
-        guideText.style.display = 'flex';
-    }
-    if (statusEl) statusEl.innerText = '';
-
-    // キャッシュ確認
-    if (traceState.svgCache[kanji]) {
-        displaySvgStrokes(traceState.svgCache[kanji], container, guideText);
-        return;
-    }
-
+    if (guideText) { guideText.innerText = kanji; guideText.style.display = 'flex'; }
+    if (traceState.svgCache[kanji]) { displaySvgStrokes(traceState.svgCache[kanji], container, guideText); return; }
     try {
         if (statusEl) statusEl.innerText = 'よみこみちゅう...';
         const res = await fetch(kanjiVgUrl(kanji));
-        if (!res.ok) throw new Error('SVGが見つかりません');
+        if (!res.ok) throw new Error('SVGなし');
         const svgText = await res.text();
-
-        // SVGをパースしてストロークを抽出
         const parser = new DOMParser();
         const doc = parser.parseFromString(svgText, 'image/svg+xml');
-        const paths = doc.querySelectorAll('path');
         const strokes = [];
-        paths.forEach(p => {
-            const d = p.getAttribute('d');
-            if (d) strokes.push(d);
-        });
-
+        doc.querySelectorAll('path').forEach(p => { const d = p.getAttribute('d'); if (d) strokes.push(d); });
         if (strokes.length > 0) {
             traceState.svgCache[kanji] = strokes;
             displaySvgStrokes(strokes, container, guideText);
             if (statusEl) statusEl.innerText = `${strokes.length}かく`;
-        } else {
-            if (statusEl) statusEl.innerText = '';
         }
-    } catch (e) {
-        // オフラインや取得失敗時はテキストガイドのまま
-        console.log('KanjiVG取得エラー（フォールバック表示）:', e);
-        if (statusEl) statusEl.innerText = '（オフラインモード）';
-    }
+    } catch (e) { console.log('KanjiVGエラー:', e); }
 }
 
-// SVGストロークを表示する
 function displaySvgStrokes(strokes, container, guideText) {
-    if (guideText) guideText.style.display = 'none'; // テキストガイドを隠す
-
+    if (guideText) guideText.style.display = 'none';
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 109 109');
-    svg.style.width = '100%';
-    svg.style.height = '100%';
-    svg.style.position = 'absolute';
-    svg.style.top = '0';
-    svg.style.left = '0';
-    svg.style.zIndex = '1';
-    svg.style.pointerEvents = 'none';
-
+    svg.style.width = '100%'; svg.style.height = '100%';
+    svg.style.position = 'absolute'; svg.style.pointerEvents = 'none';
     strokes.forEach((d, i) => {
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', d);
-        path.setAttribute('fill', 'none');
-        path.setAttribute('stroke', '#ccc');
-        path.setAttribute('stroke-width', '4');
-        path.setAttribute('stroke-linecap', 'round');
-        path.setAttribute('stroke-linejoin', 'round');
-        path.dataset.strokeIndex = i;
+        path.setAttribute('d', d); path.setAttribute('fill', 'none'); path.setAttribute('stroke', '#ccc');
+        path.setAttribute('stroke-width', '4'); path.setAttribute('stroke-linecap', 'round');
         svg.appendChild(path);
-
-        // 画数番号を表示（ストロークの始点付近）
-        const numEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        // 始点をパスのd属性から簡易解析
         const startMatch = d.match(/[Mm]\s*([\d.]+)[,\s]+([\d.]+)/);
         if (startMatch) {
-            numEl.setAttribute('x', parseFloat(startMatch[1]) - 2);
-            numEl.setAttribute('y', parseFloat(startMatch[2]) - 2);
+            const numEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            numEl.setAttribute('x', parseFloat(startMatch[1]) - 2); numEl.setAttribute('y', parseFloat(startMatch[2]) - 2);
+            numEl.setAttribute('font-size', '8'); numEl.setAttribute('fill', '#ff7675');
+            numEl.textContent = i + 1; svg.appendChild(numEl);
         }
-        numEl.setAttribute('font-size', '8');
-        numEl.setAttribute('fill', '#ff7675');
-        numEl.setAttribute('font-weight', 'bold');
-        numEl.textContent = i + 1;
-        svg.appendChild(numEl);
     });
-
     if (container) container.appendChild(svg);
 }
 
-// お手本アニメーション再生
 async function playStrokeAnimation() {
     if (traceState.animating) return;
     const k = traceState.kanji[traceState.idx];
     const strokes = traceState.svgCache[k];
     if (!strokes) return;
-
     traceState.animating = true;
     clearCanvas();
-
     try {
-        const container = document.getElementById('trace-svg-container');
-        const svg = container ? container.querySelector('svg') : null;
-        if (!svg) throw new Error('SVG not found');
-
+        const svg = document.getElementById('trace-svg-container').querySelector('svg');
+        if (!svg) throw new Error('SVGなし');
         const paths = svg.querySelectorAll('path');
-
-        // まず全ストロークを薄くする
-        paths.forEach(p => {
-            p.setAttribute('stroke', '#eee');
-            p.style.strokeDasharray = '';
-            p.style.strokeDashoffset = '';
-        });
-
-        // 一画ずつアニメーション
+        paths.forEach(p => { p.setAttribute('stroke', '#eee'); p.style.strokeDasharray = ''; });
         for (let i = 0; i < paths.length; i++) {
             const path = paths[i];
             const len = path.getTotalLength();
             if (len <= 0) continue;
-
             path.setAttribute('stroke', '#e74c3c');
-            path.setAttribute('stroke-width', '5');
             path.style.strokeDasharray = len;
             path.style.strokeDashoffset = len;
-
-            // アニメーション（安全のためタイムアウト付き）
             await new Promise(resolve => {
-                const anim = path.animate([
-                    { strokeDashoffset: len },
-                    { strokeDashoffset: 0 }
-                ], { duration: 600, easing: 'ease-in-out', fill: 'forwards' });
-                
-                // 画を完成させる共通処理
-                const finishStroke = () => {
+                const anim = path.animate([{ strokeDashoffset: len }, { strokeDashoffset: 0 }], { duration: 600, fill: 'forwards' });
+                const safety = setTimeout(() => { finish(); }, 1000);
+                function finish() {
+                    clearTimeout(safety);
                     path.style.strokeDashoffset = '0';
                     path.setAttribute('stroke', '#1a3a5c');
-                    path.setAttribute('stroke-width', '4');
                     resolve();
-                };
-
-                // 1.2秒経っても終わらない場合は強制終了して次へ
-                const safety = setTimeout(() => {
-                    console.log('Stroke animation timeout, forcing next.');
-                    finishStroke();
-                }, 1200);
-                
-                anim.onfinish = () => {
-                    clearTimeout(safety);
-                    finishStroke();
-                };
+                }
+                anim.onfinish = finish;
             });
-            // 次のストロークまで少し待つ
             await new Promise(r => setTimeout(r, 200));
         }
-
-        // 完了後、ガイド色に戻す
         await new Promise(r => setTimeout(r, 600));
-        paths.forEach(p => {
-            p.setAttribute('stroke', '#ccc');
-            p.setAttribute('stroke-width', '4');
-            p.style.strokeDasharray = '';
-            p.style.strokeDashoffset = '';
-        });
-    } catch (e) {
-        console.error('Animation error:', e);
-    } finally {
-        traceState.animating = false;
-    }
+        paths.forEach(p => p.setAttribute('stroke', '#ccc'));
+    } catch (e) { console.error('Anim Error:', e); }
+    finally { traceState.animating = false; }
 }
 
-// なぞりがきの判定ロジック
 function judgeTrace() {
     const score = checkTraceQuality();
     const statusEl = document.getElementById('trace-status');
-    console.log("Trace Score:", score);
-    
     if (score > 40) {
-        // 合格！
-        if (statusEl) {
-            statusEl.innerText = "はなまる！！";
-            statusEl.style.color = "#ff3f34";
-        }
-        playCorrect();
-        showHanamaru();
-        state.totalCorrect++;
-        saveState();
+        if (statusEl) { statusEl.innerText = "はなまる！！"; statusEl.style.color = "#ff3f34"; }
+        playCorrect(); showHanamaru();
+        state.totalCorrect++; saveState();
         const starCount = document.getElementById('star-count');
         if (starCount) starCount.innerText = state.totalCorrect;
-        const btnJudge = document.getElementById('btn-trace-judge');
-        const btnNext = document.getElementById('btn-trace-next');
-        if (btnJudge) btnJudge.style.display = 'none';
-        if (btnNext) btnNext.style.display = 'flex';
+        document.getElementById('btn-trace-judge').style.display = 'none';
+        document.getElementById('btn-trace-next').style.display = 'flex';
     } else {
-        // もっとかいてみよう
-        if (statusEl) {
-            statusEl.innerText = "もっと かいてみよう！";
-            statusEl.style.color = "#ff7675";
-        }
+        if (statusEl) { statusEl.innerText = "もっと かいてみよう！"; statusEl.style.color = "#ff7675"; }
         playWrong();
     }
 }
@@ -770,7 +622,7 @@ function showHanamaru() {
     const el = document.getElementById('hanamaru-overlay');
     if (!el) return;
     el.classList.remove('hanamaru-anime');
-    void el.offsetWidth; // リフロー強制
+    void el.offsetWidth;
     el.classList.add('hanamaru-anime');
 }
 
@@ -779,126 +631,62 @@ function checkTraceQuality() {
     if (!canvas) return 0;
     const ctx = canvas.getContext('2d');
     const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-    
-    const kanji = traceState.kanji[traceState.idx];
-    const strokes = traceState.svgCache[kanji];
-    if (!strokes) return 100; // SVGがない場合はパス
-
-    const svgContainer = document.getElementById('trace-svg-container');
-    const svg = svgContainer ? svgContainer.querySelector('svg') : null;
+    const svg = document.getElementById('trace-svg-container').querySelector('svg');
     if (!svg) return 100;
-
     const paths = svg.querySelectorAll('path');
-    let totalPoints = 0;
-    let coveredPoints = 0;
-
+    let totalPoints = 0, coveredPoints = 0;
     paths.forEach(path => {
         const length = path.getTotalLength();
-        const steps = 15; // 1画あたりのサンプリング点
-        for (let i = 0; i <= steps; i++) {
-            const pt = path.getPointAtLength(length * (i / steps));
-            // SVGの109x109座標をキャンバスの座標（実サイズ）に変換
-            const x = (pt.x / 109) * canvas.width;
-            const y = (pt.y / 109) * canvas.height;
-            
-            if (isPointCovered(imgData, x, y, canvas.width, canvas.height)) {
-                coveredPoints++;
-            }
+        for (let i = 0; i <= 15; i++) {
+            const pt = path.getPointAtLength(length * (i / 15));
+            const x = (pt.x / 109) * canvas.width, y = (pt.y / 109) * canvas.height;
+            if (isPointCovered(imgData, x, y, canvas.width, canvas.height)) coveredPoints++;
             totalPoints++;
         }
     });
-
     return (coveredPoints / totalPoints) * 100;
 }
 
 function isPointCovered(data, x, y, w, h) {
-    const radius = 15; // 判定の太さ
-    for (let dy = -radius; dy <= radius; dy += 5) {
-        for (let dx = -radius; dx <= radius; dx += 5) {
-            const px = Math.floor(x + dx);
-            const py = Math.floor(y + dy);
-            if (px >= 0 && px < w && py >= 0 && py < h) {
-                const idx = (py * w + px) * 4 + 3; // Alpha値
-                if (data[idx] > 50) return true;
-            }
-        }
-    }
-    return false;
+    const px = Math.floor(x), py = Math.floor(y);
+    const idx = (py * w + px) * 4 + 3;
+    return data[idx] > 50;
 }
 
 function clearCanvas() {
     const canvas = document.getElementById('trace-canvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
+    canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = '#1a3a5c';
-    ctx.lineWidth = 10; // 線を少し太くする
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#1a3a5c'; ctx.lineWidth = 10; ctx.lineCap = 'round';
 }
 
-function nextTrace() {
-    traceState.idx++;
-    if (traceState.idx >= traceState.kanji.length) traceState.idx = 0;
-    renderTrace();
-}
-
-function prevTrace() {
-    traceState.idx--;
-    if (traceState.idx < 0) traceState.idx = traceState.kanji.length - 1;
-    renderTrace();
-}
+function nextTrace() { traceState.idx++; if (traceState.idx >= traceState.kanji.length) traceState.idx = 0; renderTrace(); }
+function prevTrace() { traceState.idx--; if (traceState.idx < 0) traceState.idx = traceState.kanji.length - 1; renderTrace(); }
 
 function initTraceCanvas() {
     const canvas = document.getElementById('trace-canvas');
     if (!canvas) return;
-
     function getPos(e) {
         const rect = canvas.getBoundingClientRect();
         const t = e.touches ? e.touches[0] : e;
-        // スクロール分を考慮しない rect.left/top を使った正確な座標計算
-        return { 
-            x: (t.clientX - rect.left) * (canvas.width / rect.width), 
-            y: (t.clientY - rect.top) * (canvas.height / rect.height) 
-        };
+        return { x: (t.clientX - rect.left) * (canvas.width / rect.width), y: (t.clientY - rect.top) * (canvas.height / rect.height) };
     }
-
-    function startDraw(e) {
-        if (traceState.animating) return;
-        e.preventDefault();
+    canvas.addEventListener('touchstart', (e) => {
+        if (traceState.animating) return; e.preventDefault();
         traceState.drawing = true;
-        const ctx = canvas.getContext('2d');
-        const p = getPos(e);
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y);
-    }
-
-    function draw(e) {
-        if (!traceState.drawing) return;
-        e.preventDefault();
-        const ctx = canvas.getContext('2d');
-        const p = getPos(e);
-        ctx.lineTo(p.x, p.y);
-        ctx.stroke();
-    }
-
-    function endDraw(e) {
-        if (e.cancelable) e.preventDefault();
-        traceState.drawing = false;
-    }
-
-    canvas.addEventListener('mousedown', startDraw);
-    canvas.addEventListener('mousemove', draw);
-    canvas.addEventListener('mouseup', endDraw);
-    canvas.addEventListener('mouseleave', endDraw);
-    canvas.addEventListener('touchstart', startDraw, { passive: false });
-    canvas.addEventListener('touchmove', draw, { passive: false });
-    canvas.addEventListener('touchend', endDraw, { passive: false });
+        const ctx = canvas.getContext('2d'); const p = getPos(e);
+        ctx.beginPath(); ctx.moveTo(p.x, p.y);
+    }, { passive: false });
+    canvas.addEventListener('touchmove', (e) => {
+        if (!traceState.drawing) return; e.preventDefault();
+        const ctx = canvas.getContext('2d'); const p = getPos(e);
+        ctx.lineTo(p.x, p.y); ctx.stroke();
+    }, { passive: false });
+    canvas.addEventListener('touchend', () => { traceState.drawing = false; });
 }
 
-// --- ユーティリティ ---
 function shuffle(arr) { return arr.sort(() => Math.random() - 0.5); }
 
 function createClouds() {
@@ -913,11 +701,9 @@ function createClouds() {
     }
 }
 
-// --- 初期化 ---
 window.addEventListener('DOMContentLoaded', () => {
     createClouds();
     initTraceCanvas();
-    // 日付チェック
     const today = new Date().toISOString().split('T')[0];
     if (state.todayDate !== today) { state.todayStamps = 0; state.todayDate = today; saveState(); }
     const starCount = document.getElementById('star-count');
