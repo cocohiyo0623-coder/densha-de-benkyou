@@ -538,12 +538,14 @@ function showTrace() {
 
 async function renderTrace() {
     const k = traceState.kanji[traceState.idx];
-    document.getElementById('trace-counter').innerText = `${traceState.idx + 1} / ${traceState.kanji.length}`;
+    const traceCounter = document.getElementById('trace-counter');
+    if (traceCounter) traceCounter.innerText = `${traceState.idx + 1} / ${traceState.kanji.length}`;
 
     // 読みを検索して表示
     const allKanji = [...KANJI_G1, ...KANJI_G2];
     const found = allKanji.find(d => d.q === k);
-    document.getElementById('trace-reading').innerText = found ? `よみ: ${found.a}` : '';
+    const traceReading = document.getElementById('trace-reading');
+    if (traceReading) traceReading.innerText = found ? `よみ: ${found.a}` : '';
 
     // SVGガイドを読み込む
     await loadStrokeGuide(k);
@@ -556,7 +558,8 @@ async function renderTrace() {
     if (btnJudge) btnJudge.style.display = 'flex';
     if (btnNext) btnNext.style.display = 'none';
     if (hanamaru) hanamaru.classList.remove('hanamaru-anime');
-    document.getElementById('trace-status').innerText = '';
+    const statusEl = document.getElementById('trace-status');
+    if (statusEl) statusEl.innerText = '';
 }
 
 // KanjiVG から SVG を取得してガイド表示する
@@ -565,10 +568,12 @@ async function loadStrokeGuide(kanji) {
     const guideText = document.getElementById('trace-guide');
     const statusEl = document.getElementById('trace-status');
 
-    container.innerHTML = '';
-    guideText.innerText = kanji; // フォールバック表示
-    guideText.style.display = 'flex';
-    statusEl.innerText = '';
+    if (container) container.innerHTML = '';
+    if (guideText) {
+        guideText.innerText = kanji; // フォールバック表示
+        guideText.style.display = 'flex';
+    }
+    if (statusEl) statusEl.innerText = '';
 
     // キャッシュ確認
     if (traceState.svgCache[kanji]) {
@@ -577,7 +582,7 @@ async function loadStrokeGuide(kanji) {
     }
 
     try {
-        statusEl.innerText = 'よみこみちゅう...';
+        if (statusEl) statusEl.innerText = 'よみこみちゅう...';
         const res = await fetch(kanjiVgUrl(kanji));
         if (!res.ok) throw new Error('SVGが見つかりません');
         const svgText = await res.text();
@@ -595,20 +600,20 @@ async function loadStrokeGuide(kanji) {
         if (strokes.length > 0) {
             traceState.svgCache[kanji] = strokes;
             displaySvgStrokes(strokes, container, guideText);
-            statusEl.innerText = `${strokes.length}かく`;
+            if (statusEl) statusEl.innerText = `${strokes.length}かく`;
         } else {
-            statusEl.innerText = '';
+            if (statusEl) statusEl.innerText = '';
         }
     } catch (e) {
         // オフラインや取得失敗時はテキストガイドのまま
         console.log('KanjiVG取得エラー（フォールバック表示）:', e);
-        statusEl.innerText = '（オフラインモード）';
+        if (statusEl) statusEl.innerText = '（オフラインモード）';
     }
 }
 
 // SVGストロークを表示する
 function displaySvgStrokes(strokes, container, guideText) {
-    guideText.style.display = 'none'; // テキストガイドを隠す
+    if (guideText) guideText.style.display = 'none'; // テキストガイドを隠す
 
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 109 109');
@@ -646,7 +651,7 @@ function displaySvgStrokes(strokes, container, guideText) {
         svg.appendChild(numEl);
     });
 
-    container.appendChild(svg);
+    if (container) container.appendChild(svg);
 }
 
 // お手本アニメーション再生
@@ -661,7 +666,7 @@ async function playStrokeAnimation() {
 
     try {
         const container = document.getElementById('trace-svg-container');
-        const svg = container.querySelector('svg');
+        const svg = container ? container.querySelector('svg') : null;
         if (!svg) throw new Error('SVG not found');
 
         const paths = svg.querySelectorAll('path');
@@ -691,14 +696,23 @@ async function playStrokeAnimation() {
                     { strokeDashoffset: 0 }
                 ], { duration: 600, easing: 'ease-in-out', fill: 'forwards' });
                 
-                const safety = setTimeout(resolve, 1000);
-                
-                anim.onfinish = () => {
-                    clearTimeout(safety);
+                // 画を完成させる共通処理
+                const finishStroke = () => {
                     path.style.strokeDashoffset = '0';
                     path.setAttribute('stroke', '#1a3a5c');
                     path.setAttribute('stroke-width', '4');
                     resolve();
+                };
+
+                // 1.2秒経っても終わらない場合は強制終了して次へ
+                const safety = setTimeout(() => {
+                    console.log('Stroke animation timeout, forcing next.');
+                    finishStroke();
+                }, 1200);
+                
+                anim.onfinish = () => {
+                    clearTimeout(safety);
+                    finishStroke();
                 };
             });
             // 次のストロークまで少し待つ
@@ -728,19 +742,26 @@ function judgeTrace() {
     
     if (score > 40) {
         // 合格！
-        statusEl.innerText = "はなまる！！";
-        statusEl.style.color = "#ff3f34";
+        if (statusEl) {
+            statusEl.innerText = "はなまる！！";
+            statusEl.style.color = "#ff3f34";
+        }
         playCorrect();
         showHanamaru();
         state.totalCorrect++;
         saveState();
-        document.getElementById('star-count').innerText = state.totalCorrect;
-        document.getElementById('btn-trace-judge').style.display = 'none';
-        document.getElementById('btn-trace-next').style.display = 'flex';
+        const starCount = document.getElementById('star-count');
+        if (starCount) starCount.innerText = state.totalCorrect;
+        const btnJudge = document.getElementById('btn-trace-judge');
+        const btnNext = document.getElementById('btn-trace-next');
+        if (btnJudge) btnJudge.style.display = 'none';
+        if (btnNext) btnNext.style.display = 'flex';
     } else {
-        // もっとかいてみよう（お子さんのやる気を削がない程度のメッセージ）
-        statusEl.innerText = "もっと かいてみよう！";
-        statusEl.style.color = "#ff7675";
+        // もっとかいてみよう
+        if (statusEl) {
+            statusEl.innerText = "もっと かいてみよう！";
+            statusEl.style.color = "#ff7675";
+        }
         playWrong();
     }
 }
@@ -755,6 +776,7 @@ function showHanamaru() {
 
 function checkTraceQuality() {
     const canvas = document.getElementById('trace-canvas');
+    if (!canvas) return 0;
     const ctx = canvas.getContext('2d');
     const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
     
@@ -763,7 +785,7 @@ function checkTraceQuality() {
     if (!strokes) return 100; // SVGがない場合はパス
 
     const svgContainer = document.getElementById('trace-svg-container');
-    const svg = svgContainer.querySelector('svg');
+    const svg = svgContainer ? svgContainer.querySelector('svg') : null;
     if (!svg) return 100;
 
     const paths = svg.querySelectorAll('path');
@@ -790,7 +812,7 @@ function checkTraceQuality() {
 }
 
 function isPointCovered(data, x, y, w, h) {
-    const radius = 15; // 判定の太さ（さらに広めにして判定を甘くする）
+    const radius = 15; // 判定の太さ
     for (let dy = -radius; dy <= radius; dy += 5) {
         for (let dx = -radius; dx <= radius; dx += 5) {
             const px = Math.floor(x + dx);
@@ -812,7 +834,7 @@ function clearCanvas() {
     canvas.height = canvas.offsetHeight;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.strokeStyle = '#1a3a5c';
-    ctx.lineWidth = 6;
+    ctx.lineWidth = 10; // 線を少し太くする
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 }
@@ -836,11 +858,15 @@ function initTraceCanvas() {
     function getPos(e) {
         const rect = canvas.getBoundingClientRect();
         const t = e.touches ? e.touches[0] : e;
-        return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+        // スクロール分を考慮しない rect.left/top を使った正確な座標計算
+        return { 
+            x: (t.clientX - rect.left) * (canvas.width / rect.width), 
+            y: (t.clientY - rect.top) * (canvas.height / rect.height) 
+        };
     }
 
     function startDraw(e) {
-        if (traceState.animating) return; // アニメーション中は描画しない
+        if (traceState.animating) return;
         e.preventDefault();
         traceState.drawing = true;
         const ctx = canvas.getContext('2d');
@@ -894,5 +920,7 @@ window.addEventListener('DOMContentLoaded', () => {
     // 日付チェック
     const today = new Date().toISOString().split('T')[0];
     if (state.todayDate !== today) { state.todayStamps = 0; state.todayDate = today; saveState(); }
-    document.getElementById('star-count').innerText = state.totalCorrect;
+    const starCount = document.getElementById('star-count');
+    if (starCount) starCount.innerText = state.totalCorrect;
 });
+坐
