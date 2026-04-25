@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>でんしゃでおべんきょう V2</title>
+    <meta name="description" content="発達特性のあるお子様向け、電車モチーフの楽しい漢字・算数学習アプリ">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+    <!-- ヘッダー -->
+    <div id="global-header" class="header" style="display: none;">
+        <button class="btn-back" onclick="goHome()" aria-label="ホームに戻る">← もどる</button>
+        <div style="font-size: 24px; font-weight: bold;">⭐ <span id="star-count">0</span></div>
+    </div>
+
+    <!-- ホーム画面 -->
+    <div id="screen-home" class="screen active">
+        <div class="home-hero">🚃</div>
+        <h1 class="title" style="font-size: 40px;">でんしゃで<br>おべんきょう</h1>
+        <p class="subtitle">きょうも いっしょに しゅっぱつ！</p>
+
+        <!-- 学年タブ -->
+        <div class="grade-tabs">
+            <button class="grade-tab active" data-grade="1" onclick="setGrade(1)">1ねんせい</button>
+            <button class="grade-tab" data-grade="2" onclick="setGrade(2)">2ねんせい</button>
+        </div>
+
+        <button class="btn-large btn-kanji" onclick="startKanji()" aria-label="かんじクイズ"><span>📝</span> かんじ</button>
+        <button class="btn-large btn-trace" onclick="showTrace()" aria-label="なぞりがき"><span>✍️</span> なぞりがき</button>
+        <button class="btn-large btn-math" onclick="showMathSelect()" aria-label="さんすうクイズ"><span>🔢</span> さんすう</button>
+        <button class="btn-large btn-record" onclick="showRecord()" aria-label="ごほうびを見る">
+            <span>🏆</span> ごほうび
+            <div id="reward-badge" class="notification-badge">!</div>
+        </button>
+        <p style="font-size: 12px; color: #888; margin-top: 15px;">※ おうちのひとと いっしょに つかってね</p>
+    </div>
+
+    <!-- 算数選択画面 -->
+    <div id="screen-math-select" class="screen">
+        <h2 class="title">なににする？</h2>
+        <button class="btn-large btn-math" onclick="startMath('addsub')"><span>➕</span> たしざん・ひきざん</button>
+        <button class="btn-large btn-math" onclick="showDanSelect()"><span>✖️</span> 九九（かけざん）</button>
+        <button class="btn-large btn-math" onclick="startMath('word')"><span>📖</span> ぶんしょうだい</button>
+    </div>
+
+    <!-- 九九段選択画面 -->
+    <div id="screen-dan-select" class="screen">
+        <h2 class="title">なんのだん？</h2>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; max-width: 400px;">
+            <button class="btn-large btn-math" style="min-height: 60px;" onclick="startMath('mul', 2)">2のだん</button>
+            <button class="btn-large btn-math" style="min-height: 60px;" onclick="startMath('mul', 3)">3のだん</button>
+            <button class="btn-large btn-math" style="min-height: 60px;" onclick="startMath('mul', 4)">4のだん</button>
+            <button class="btn-large btn-math" style="min-height: 60px;" onclick="startMath('mul', 5)">5のだん</button>
+            <button class="btn-large btn-math" style="min-height: 60px;" onclick="startMath('mul', 6)">6のだん</button>
+            <button class="btn-large btn-math" style="min-height: 60px;" onclick="startMath('mul', 7)">7のだん</button>
+            <button class="btn-large btn-math" style="min-height: 60px;" onclick="startMath('mul', 8)">8のだん</button>
+            <button class="btn-large btn-math" style="min-height: 60px;" onclick="startMath('mul', 9)">9のだん</button>
+            <button class="btn-large btn-math" style="min-height: 60px; grid-column: span 2;" onclick="startMath('mul', 'all')">ぜんぶシャッフル</button>
+        </div>
+    </div>
+
+    <!-- ゲーム画面 -->
+    <div id="screen-game" class="screen">
+        <div class="track-container">
+            <div class="track-line"></div>
+            <div id="station-markers" class="station-markers"></div>
+            <div id="game-train" class="game-train">🚃</div>
+        </div>
+        <div style="width: 100%; display: flex; flex-direction: column; align-items: center;">
+            <!-- ヒントバブル -->
+            <div id="hint-bubble" class="hint-bubble"></div>
+            <div class="question-card">
+                <button id="hint-btn" class="hint-btn" onclick="showHint()" style="display: none;" aria-label="ヒントを見る">💡</button>
+                <div id="step-label" style="position: absolute; top: 10px; right: 15px; font-weight: bold; color: #aaa;"></div>
+                <div id="question-text" style="font-size: 18px; color: #666; margin-bottom: 5px;"></div>
+                <div id="question-display" class="question-display"></div>
+            </div>
+            <div id="choice-grid" class="choice-grid"></div>
+        </div>
+    </div>
+
+    <!-- なぞりがき画面 -->
+    <div id="screen-trace" class="screen">
+        <h2 class="title">なぞりがき</h2>
+        <p id="trace-counter" style="font-size: 16px; color: #888;"></p>
+        <div class="trace-area">
+            <div id="trace-svg-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;"></div>
+            <div id="trace-guide" class="trace-guide"></div>
+            <canvas id="trace-canvas" class="trace-canvas"></canvas>
+            <div id="hanamaru-overlay" class="hanamaru-overlay">💮</div>
+        </div>
+        <p id="trace-status" style="font-size: 14px; color: #888; margin: 5px 0;"></p>
+        <p id="trace-reading" class="trace-reading"></p>
+        <div class="trace-controls">
+            <button class="trace-btn trace-btn-clear" onclick="prevTrace()">← まえ</button>
+            <button class="trace-btn" style="background: #fdcb6e;" onclick="playStrokeAnimation()" aria-label="お手本を見る">▶ おてほん</button>
+            <button class="trace-btn trace-btn-clear" onclick="clearCanvas()">けす</button>
+            <button id="btn-trace-judge" class="trace-btn trace-btn-next" style="background: #ff7675;" onclick="judgeTrace()">できた！</button>
+            <button id="btn-trace-next" class="trace-btn trace-btn-next" style="display: none;" onclick="nextTrace()">つぎ →</button>
+        </div>
+    </div>
+
+
+    <!-- ごほうび画面 -->
+    <div id="screen-record" class="screen">
+        <h2 class="title">🏆 ごほうび</h2>
+
+        <h3 style="font-size: 20px;">きょうの スタンプ</h3>
+        <div id="stamp-grid" class="stamp-grid"></div>
+
+        <div class="stats-box">
+            <h3 style="margin-top: 0;">きろく</h3>
+            <div class="stats-row">
+                <div class="stat-item"><div id="stat-correct" class="stat-value">0</div><div class="stat-label">せいかい</div></div>
+                <div class="stat-item"><div id="stat-level" class="stat-value">1</div><div class="stat-label">レベル</div></div>
+                <div class="stat-item"><div id="stat-days" class="stat-value">0</div><div class="stat-label">にちすう</div></div>
+            </div>
+        </div>
+
+        <h3 style="font-size: 20px;">メダル</h3>
+        <div id="medal-list" class="medal-list"></div>
+
+        <button class="btn-danger" onclick="resetData()">🗑️ きろくを ぜんぶ けす（おうちのひとよう）</button>
+    </div>
+
+    <!-- クリア画面 -->
+    <div id="screen-clear" class="screen">
+        <h1 class="title">クリア！</h1>
+        <div id="clear-medal" class="clear-medal">🥉</div>
+        <p style="font-size: 22px; font-weight: bold;">
+            <span id="clear-correct">0</span> / <span id="clear-total">10</span> もん せいかい！
+        </p>
+        <div id="new-medal-alert" class="new-medal-alert">✨ あたらしいメダルを ゲットしたよ！ ✨</div>
+        <p style="font-size: 18px;">レベル: <span id="clear-level">1</span></p>
+        <button class="btn-large btn-kanji" onclick="goHome()"><span>🏠</span> ホームにもどる</button>
+    </div>
+
+    <!-- 演出オーバーレイ -->
+    <div id="praise-overlay">
+        <div id="praise-emoji" class="praise-emoji">💮</div>
+        <div id="praise-text" class="praise-text">すごい！</div>
+    </div>
+</div>
+
+<!-- JavaScriptの読み込み（順番が大事！） -->
+<script src="data.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>
