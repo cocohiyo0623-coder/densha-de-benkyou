@@ -218,6 +218,7 @@ function renderQuestion() {
         text.innerText = "こたえは どれ？";
         display.innerText = q.q;
         display.style.fontSize = '48px';
+        hintBtn.style.display = 'block'; // 算数は常にヒント（そろばん）を出せるようにする
     }
 
     // 選択肢を描画
@@ -253,10 +254,56 @@ function renderQuestion() {
 // --- ヒント表示 ---
 function showHint() {
     const q = game.questions[game.idx];
-    if (!q.hint) return;
     const bubble = document.getElementById('hint-bubble');
-    bubble.innerHTML = `<span class="hint-emoji">${q.hint}</span><span>${q.hintText}</span>`;
+    
+    if (game.mode === 'kanji') {
+        if (!q.hint) return;
+        bubble.innerHTML = `<span class="hint-emoji">${q.hint}</span><span>${q.hintText}</span>`;
+    } else {
+        // 算数モードならそろばんを表示
+        bubble.innerHTML = `<div style="margin-bottom:5px;">そろばん ヒント</div>`;
+        const container = document.createElement('div');
+        container.className = 'soroban-container';
+        
+        if (q.nums) {
+            q.nums.forEach((n, i) => {
+                container.appendChild(renderSorobanRow(n, i === 0 ? 'red' : 'blue'));
+            });
+        }
+        bubble.appendChild(container);
+
+        // 玉を動かすアニメーション（少し遅らせて実行）
+        safeTimeout(() => {
+            bubble.querySelectorAll('.bead-group').forEach(g => {
+                g.style.transform = 'translateX(0)';
+            });
+        }, 50);
+    }
+    
     bubble.classList.toggle('show');
+}
+
+function renderSorobanRow(num, color) {
+    const row = document.createElement('div');
+    row.className = 'soroban-row';
+    const group = document.createElement('div');
+    group.className = 'bead-group';
+    group.style.transform = 'translateX(-200px)'; // 最初は左に隠しておく
+    
+    for (let i = 0; i < 10; i++) {
+        const bead = document.createElement('div');
+        bead.className = 'bead';
+        if (color === 'blue') bead.classList.add('blue');
+        // 5個ごとに色を変える（視認性アップ）
+        if (i >= 5) bead.style.filter = 'brightness(1.2)';
+        
+        // 指定された数だけ「濃い」状態で表示し、残りは透明度を下げる
+        if (i >= num) bead.style.opacity = '0.1';
+        
+        group.appendChild(bead);
+    }
+    row.appendChild(group);
+    return row;
 }
 
 // --- 回答チェック ---
@@ -441,7 +488,7 @@ function generateAddSub() {
     let a, b, ans;
     if (isAdd) { ans = Math.floor(Math.random() * 9) + 2; a = Math.floor(Math.random() * (ans - 1)) + 1; b = ans - a; }
     else { a = Math.floor(Math.random() * 9) + 2; b = Math.floor(Math.random() * (a - 1)) + 1; ans = a - b; }
-    return { q: `${a} ${isAdd ? '＋' : '－'} ${b} ＝ ？`, a: ans, c: makeNumChoices(ans, 0, 10) };
+    return { q: `${a} ${isAdd ? '＋' : '－'} ${b} ＝ ？`, a: ans, c: makeNumChoices(ans, 0, 10), nums: [a, b] };
 }
 
 // 2年生用: くりあがり・くりさがり（20まで）
@@ -450,14 +497,14 @@ function generateAddSubG2() {
     let a, b, ans;
     if (isAdd) { a = Math.floor(Math.random() * 15) + 3; b = Math.floor(Math.random() * 10) + 1; ans = a + b; if (ans > 20) { b = 20 - a; ans = 20; } }
     else { a = Math.floor(Math.random() * 11) + 10; b = Math.floor(Math.random() * (a - 1)) + 1; if (b > 10) b = 10; ans = a - b; }
-    return { q: `${a} ${isAdd ? '＋' : '－'} ${b} ＝ ？`, a: ans, c: makeNumChoices(ans, 0, 30) };
+    return { q: `${a} ${isAdd ? '＋' : '－'} ${b} ＝ ？`, a: ans, c: makeNumChoices(ans, 0, 30), nums: [a, b] };
 }
 
 function generateMul(dan) {
     const d = (dan === 'all') ? (Math.floor(Math.random() * 8) + 2) : dan;
     const b = Math.floor(Math.random() * 9) + 1;
     const ans = d * b;
-    return { q: `${d} × ${b} ＝ ？`, a: ans, c: makeNumChoices(ans, 1, 81) };
+    return { q: `${d} × ${b} ＝ ？`, a: ans, c: makeNumChoices(ans, 1, 81), nums: [d, b] };
 }
 
 function makeNumChoices(ans, min, max) {
