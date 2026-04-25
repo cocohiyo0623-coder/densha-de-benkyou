@@ -659,11 +659,6 @@ async function playStrokeAnimation() {
     traceState.animating = true;
     clearCanvas();
 
-    const container = document.getElementById('trace-svg-container');
-    const svg = container.querySelector('svg');
-    if (!svg) { traceState.animating = false; return; }
-
-    const paths = svg.querySelectorAll('path');
 
     // まず全ストロークを薄くする
     paths.forEach(p => {
