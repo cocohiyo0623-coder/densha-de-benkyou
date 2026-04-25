@@ -335,6 +335,7 @@ body {
     display: flex; align-items: center; justify-content: center;
     font-size: 180px; color: #eee;
     z-index: 1;
+    transition: opacity 0.5s;
 }
 
 .trace-controls {
@@ -421,4 +422,7 @@ body {
 }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-坐
+
+#trace-svg-container {
+    transition: opacity 0.5s;
+}
