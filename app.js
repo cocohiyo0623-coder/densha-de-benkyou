@@ -659,50 +659,65 @@ async function playStrokeAnimation() {
     traceState.animating = true;
     clearCanvas();
 
+    try {
+        const container = document.getElementById('trace-svg-container');
+        const svg = container.querySelector('svg');
+        if (!svg) throw new Error('SVG not found');
 
-    // まず全ストロークを薄くする
-    paths.forEach(p => {
-        p.setAttribute('stroke', '#eee');
-        p.style.strokeDasharray = '';
-        p.style.strokeDashoffset = '';
-    });
+        const paths = svg.querySelectorAll('path');
 
-    // 一画ずつアニメーション
-    for (let i = 0; i < paths.length; i++) {
-        const path = paths[i];
-        const len = path.getTotalLength();
-        path.setAttribute('stroke', '#e74c3c');
-        path.setAttribute('stroke-width', '5');
-        path.style.strokeDasharray = len;
-        path.style.strokeDashoffset = len;
-
-        // アニメーション
-        await new Promise(resolve => {
-            const anim = path.animate([
-                { strokeDashoffset: len },
-                { strokeDashoffset: 0 }
-            ], { duration: 600, easing: 'ease-in-out', fill: 'forwards' });
-            anim.onfinish = () => {
-                path.style.strokeDashoffset = '0';
-                path.setAttribute('stroke', '#1a3a5c');
-                path.setAttribute('stroke-width', '4');
-                resolve();
-            };
+        // まず全ストロークを薄くする
+        paths.forEach(p => {
+            p.setAttribute('stroke', '#eee');
+            p.style.strokeDasharray = '';
+            p.style.strokeDashoffset = '';
         });
-        // 次のストロークまで少し待つ
-        await new Promise(r => setTimeout(r, 300));
-    }
 
-    // 完了後、ガイド色に戻す
-    setTimeout(() => {
+        // 一画ずつアニメーション
+        for (let i = 0; i < paths.length; i++) {
+            const path = paths[i];
+            const len = path.getTotalLength();
+            if (len <= 0) continue;
+
+            path.setAttribute('stroke', '#e74c3c');
+            path.setAttribute('stroke-width', '5');
+            path.style.strokeDasharray = len;
+            path.style.strokeDashoffset = len;
+
+            // アニメーション（安全のためタイムアウト付き）
+            await new Promise(resolve => {
+                const anim = path.animate([
+                    { strokeDashoffset: len },
+                    { strokeDashoffset: 0 }
+                ], { duration: 600, easing: 'ease-in-out', fill: 'forwards' });
+                
+                const safety = setTimeout(resolve, 1000);
+                
+                anim.onfinish = () => {
+                    clearTimeout(safety);
+                    path.style.strokeDashoffset = '0';
+                    path.setAttribute('stroke', '#1a3a5c');
+                    path.setAttribute('stroke-width', '4');
+                    resolve();
+                };
+            });
+            // 次のストロークまで少し待つ
+            await new Promise(r => setTimeout(r, 200));
+        }
+
+        // 完了後、ガイド色に戻す
+        await new Promise(r => setTimeout(r, 600));
         paths.forEach(p => {
             p.setAttribute('stroke', '#ccc');
             p.setAttribute('stroke-width', '4');
             p.style.strokeDasharray = '';
             p.style.strokeDashoffset = '';
         });
+    } catch (e) {
+        console.error('Animation error:', e);
+    } finally {
         traceState.animating = false;
-    }, 800);
+    }
 }
 
 // なぞりがきの判定ロジック
